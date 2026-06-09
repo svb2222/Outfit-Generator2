@@ -1,0 +1,25 @@
+
+#root directory of your dataset
+path: /Users/svbachiraju/Documents/Closet-Backend/outfit-generator/dataset
+
+#relatiev paths from the 'path' route above
+train:images
+val:images #validation set, used during trainignt o emasure how well modle is learning
+test:images
+
+nc:10
+
+names: #matching indices to classes
+  0:sunglasses
+  1:hat
+  2:jacket
+  3:shirt
+  4:pants
+  5:shorts
+  6:skirt
+  7:dress
+  8:bag
+  9:shoe
+
+
+
