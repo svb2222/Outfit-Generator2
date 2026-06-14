@@ -71,7 +71,8 @@ def addClothing():
     for obj in results[0].boxes.cls:
         label_id = obj.item()
         label = results[0].names[label_id]  # convert ID to name
-        piece = Piece(label, img_url, "unknown") #will work on color part later
+        display_label = clean_label(label)
+        piece = Piece(display_label, img_url, "unknown") #will work on color part later
         db.session.add(piece)
     
     db.session.commit()  # commit once outside the loop
@@ -81,6 +82,15 @@ def addClothing():
         return failure_response("No clothing item was created", 400)
     return success_response(piece.to_dict(), 201)
 
+
+def clean_label(raw_label):
+    # "Short-sleeves_black-white" → ["Short-sleeves", "black-white"]
+    parts = raw_label.split("_")
+    
+    item_type = parts[0].replace("-", " ").lower()       # "short sleeves"
+    color_info = parts[1].replace("-", " ") if len(parts) > 1 else ""  # "black white"
+    
+    return f"{color_info} {item_type}".strip().capitalize()
 
 #getWardrobe as list of all pieces from wardrobe
 @app.route("/wardrobe/", methods=["GET"])
