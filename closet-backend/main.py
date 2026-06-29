@@ -1,14 +1,37 @@
-#This file loads trained model + sets up Gemma 3 model pipeline
-from transformers import pipeline 
+
+# This file loads the trained YOLO model + sets up the cloud Groq API pipeline
+import os
 from ultralytics import YOLO 
+from groq import Groq
+from flask.cli import load_dotenv
 
-#load our trained model
-#TODO: update the path to the model once we trained it with more epochs for better accuracy!!
-model = YOLO('best.pt')
+# Load our trained object detection model
+model = YOLO('best2.pt')
 
-#loading gemma 3
-generator = pipeline( 
-    task = "text-generation",
-    model = "google/gemma-3-1b-it",
-)
+load_dotenv()
+
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+def generator(prompt_text, **kwargs):
+    """
+    Sends the fashion prompt to Groq's cloud processing layer 
+    using the open-weights Llama-3 model for 100% free generation.
+    """
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "user", "content": prompt_text}
+            ],
+            temperature=0.7,
+            response_format={"type": "json_object"} 
+        )
+        
+        response_text = completion.choices[0].message.content
+        
+        return [{"generated_text": f"<start_of_turn>model\n{response_text}"}]
+        
+    except Exception as e:
+        print(f"Groq API Error: {e}")
+        return [{"generated_text": '<start_of_turn>model\n{"error": "Failed to generate outfit structure"}'}]
 

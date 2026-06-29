@@ -2,9 +2,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 
-
 db = SQLAlchemy() #database object used to interact w db, use to create tables, models, and to query the db
-
 
 class Piece(db.Model):
     __tablename__="wardrobe"

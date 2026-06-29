@@ -1,1 +1,8 @@
+*.pyc
+venv/
+
+runs/
+dataset/
+fashion_dataset/
+__pycache__/
 .env

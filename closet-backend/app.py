@@ -6,7 +6,7 @@ from flask import Flask, request, jsonify
 from flask.cli import load_dotenv 
 from db import db, Piece
 from main import model, generator #import the AI models
-from flask_cors import CORS #cross origin resource sharing, disables default restriction blocking front & backend comms
+from flask_cors import CORS 
 import json
 import os
 import numpy as np
@@ -15,8 +15,8 @@ import cv2
 app = Flask(__name__) #create Flask web server object
 CORS(app) #enable cross origin resource sharing btwn front & backend
 
-#LATER we will move from local to cloud via os.getenv("DATABASE_URL")
-app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://localhost/closet_db"
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "postgresql://localhost/closet_db")
+#app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://localhost/closet_db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ECHO"] = False  # set to True to log SQL queries while debugging
 
@@ -41,7 +41,6 @@ cloudinary.config(
     api_secret=os.getenv("API_SECRET")
 )
 
-
 #routes
 @app.route("/")
 def home():
@@ -63,7 +62,7 @@ def addClothing():
     # Convert bytes to numpy array for YOLOv8
     nparr = np.frombuffer(img_bytes, np.uint8)
     img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
+    
     # Pass numpy array to YOLOv8
     results = model(img_np, save_crop=True) 
 
@@ -72,25 +71,24 @@ def addClothing():
         label_id = obj.item()
         label = results[0].names[label_id]  # convert ID to name
         display_label = clean_label(label)
-        piece = Piece(display_label, img_url, "unknown") #will work on color part later
+        piece = Piece(label=display_label, image=img_url, color="unknown")
+        db.session.add(piece)
+        
+    # If YOLO didn't detect anything, we still save the item as Unrecognized
+    if piece is None:
+        piece = Piece("Unrecognized item", image = img_url, color="unknown")
         db.session.add(piece)
     
-    db.session.commit()  # commit once outside the loop
+    db.session.commit()  # commit the piece to the database
 
-
-    if piece is None:
-        return failure_response("No clothing item was created", 400)
     return success_response(piece.to_dict(), 201)
-
+    
 
 def clean_label(raw_label):
-    # "Short-sleeves_black-white" → ["Short-sleeves", "black-white"]
+    # Splits "Short-sleeves_black-white" on the underscore and takes the first part
     parts = raw_label.split("_")
-    
-    item_type = parts[0].replace("-", " ").lower()       # "short sleeves"
-    color_info = parts[1].replace("-", " ") if len(parts) > 1 else ""  # "black white"
-    
-    return f"{color_info} {item_type}".strip().capitalize()
+    item_type = parts[0].replace("-", " ").strip().capitalize()
+    return item_type
 
 #getWardrobe as list of all pieces from wardrobe
 @app.route("/wardrobe/", methods=["GET"])
@@ -120,6 +118,25 @@ def removeClothingItem(id):
     db.session.commit()
     return success_response("Clothing item removed", code=200)
 
+# Update a clothing item's label (manual override)
+@app.route("/wardrobe/<int:id>", methods=["PUT"])
+def updateClothingItem(id):
+    piece = Piece.query.get(id)
+    if piece is None:
+        return failure_response("Clothing item not found", code=404)
+    
+    body = json.loads(request.data)
+    new_label = body.get("label")
+    
+    if not new_label:
+        return failure_response("Label cannot be empty", code=400)
+    
+    piece.label = new_label.strip().capitalize()
+    db.session.commit()
+    
+    return success_response(piece.to_dict(), code=200)
+
+
 #getOutfit() (outfit generation route!)
 @app.route("/wardrobe/outfit/", methods=["POST"])
 def getOutfit():
@@ -133,7 +150,7 @@ def getOutfit():
 
     body = json.loads(request.data) #read JSON body sent with request
     occasion = body.get("occasion","casual")
-    weather = body.get("weather","mild")
+    weather = body.get("weather","sunny")
     color = body.get("color","no preference")
 
 
@@ -181,16 +198,26 @@ def getOutfit():
     <start_of_turn>model
              
     """
-    response = generator(prompt, max_new_tokens=500, do_sample=True, temperature=0.7)
-    full_response = response[0]['generated_text']
-    generated = full_response.split("<start_of_turn>model")[-1].strip()
+    
+    # Fire the prompt over to Groq cloud generator script
+    response = generator(prompt)
+    generated = response[0]['generated_text']
+    
+    # Clean out the legacy split tags if they exist
+    if "<start_of_turn>model" in generated:
+        generated = generated.split("<start_of_turn>model")[-1].strip()
+    
+    # Clean out markdown code blocks just in case
+    if "```json" in generated:
+        generated = generated.split("```json")[1].split("```")[0].strip()
+    elif "```" in generated:
+        generated = generated.split("```")[1].split("```")[0].strip()
 
     try:
         outfit_data = json.loads(generated)
         return success_response(outfit_data, code=200)
-    except:
-        return success_response(generated, code=200) #for debugging purposes, return the full response if JSON parsing fails
-
+    except Exception as e:
+        return success_response({"error": "Failed to parse JSON", "raw_text": generated}, code=200)
 
 
 if __name__ == "__main__":
