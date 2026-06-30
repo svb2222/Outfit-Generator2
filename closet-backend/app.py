@@ -26,10 +26,10 @@ with app.app_context():
 
 # Response helper functions
 def success_response(data, code=200):
-    return json.dumps({"success": True, "data": data}), code
+    return jsonify({"success": True, "data": data}), code
 
 def failure_response(message, code=404):
-    return json.dumps({"success": False, "error": message}), code
+    return jsonify({"success": False, "error": message}), code
 
 
 #cloudinary config
