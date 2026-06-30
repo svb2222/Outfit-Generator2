@@ -46,15 +46,16 @@ cloudinary.config(
 def home():
     return success_response("Welcome to the closet API!")
 
-@app.route("/wardrobe/", methods=["POST"])
+@app.route("/wardrobe", methods=["POST"])
 def addClothing():
+    print("---> [1/4] Incoming request received!")
     img = request.files.get("image")
     if img is None:
         return failure_response("No image provided", code=400)
     
     # Read image bytes once into memory
     img_bytes = img.read()
-    
+    print("---> [2/4] Uploading to Cloudinary...")
     # Upload to Cloudinary using bytes
     upload_result = cloudinary.uploader.upload(img_bytes, folder="wardrobe_pieces")
     img_url = upload_result['secure_url']
@@ -62,7 +63,7 @@ def addClothing():
     # Convert bytes to numpy array for YOLOv8
     nparr = np.frombuffer(img_bytes, np.uint8)
     img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    
+    print("---> [3/4] Running YOLOv8 detection...")
     # Pass numpy array to YOLOv8
     results = model(img_np, save_crop=True) 
 
@@ -78,7 +79,7 @@ def addClothing():
     if piece is None:
         piece = Piece("Unrecognized item", image = img_url, color="unknown")
         db.session.add(piece)
-    
+    print("---> [4/4] Committing to database...")
     db.session.commit()  # commit the piece to the database
 
     return success_response(piece.to_dict(), 201)
@@ -91,7 +92,7 @@ def clean_label(raw_label):
     return item_type
 
 #getWardrobe as list of all pieces from wardrobe
-@app.route("/wardrobe/", methods=["GET"])
+@app.route("/wardrobe", methods=["GET"])
 def getWardrobe():
     pieces = Piece.query.all()
     result = []
@@ -138,7 +139,7 @@ def updateClothingItem(id):
 
 
 #getOutfit() (outfit generation route!)
-@app.route("/wardrobe/outfit/", methods=["POST"])
+@app.route("/wardrobe/outfit", methods=["POST"])
 def getOutfit():
     pieces = Piece.query.all()
     if not pieces:
